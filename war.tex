@@ -160,7 +160,6 @@ complicated than War. It seems difficult to pinpoint exactly when the game
 started, but it must have been well-over two-hundred years ago, if not
 \emph{significantly} further in our history.
 
-
 \section{Procedures}
 \label{sec:procedures}
 \subsection{Setting Up the Game}
@@ -370,6 +369,382 @@ OneMove:=proc(P,c,m,WAR,rep) local r, a, b, tempP, i, h, w, Q, output, W:
 \end{lstlisting}
 
 
+\subsubsection{Simulating Games of War}\hfill
+
+
+The procedure \textbf{GenOneGameK(n,k,r,m,WAR,rep,K)} inputs positive integers n,k,r,K, a non-negative integer $m$, war procedure WAR, and replacement procedure rep. It simulates a game of war that is at most $K$ rounds and has $n$ different cards, $k$ copies of each card, and $r$ players. First it generates a random starting deck using $RandDeck(n,k,r)$. Then it runs $OneMove$ either $K$ times or until the game finishes, whichever occurs first. If the game terminates, it outputs a list $[w,i]$ where $w$ is the winner (or set of winners if there is a tie), and $i$ is the number of rounds the game took. If there are no winners, $w={0}.$ If the game does not terminate, the procedure fails. 
+
+
+\begin{lstlisting}
+GenOneGameK:=proc(n,k,r,m, WAR,rep,K) local P, HandSize, i, Q, w:
+  P:=RanDeck(n,k,r):
+  HandSize:=[seq(nopsP[i],i=1..r)]:
+
+
+  for i from 1 to K while nops(remove(t->t=0, HandSize))>1 and type(P,list)=true do
+    Q:=P:
+    HandSize:=[seq(nops(P[i]),i=1..r)]:
+    P:=OneMove(P,[],m,WAR,rep): od:
+
+
+   if i=K+1 then RETURN(FAIL):
+
+
+   elif nops(remove(t->t=0, HandSize))=1 then w:=max[index](HandSize):
+
+
+   elif type(P,list)=false then w:=P
+
+
+   else RETURN(FAIL): fi:
+ [w,i-1]:
+end:
+\end{lstlisting}
+
+
+The procedure \textbf{GenManyGamesK(n,k,r,m,WAR,rep,K,w,t,M)} inputs positive integers n,k,r,m,K,M, war procedure WAR, replacement procedure rep, and variables w and t. It simulates $M$ random games of war that are at most $K$ rounds and has $n$ different cards, $k$ copies of each card, and $r$ players. It runs $GenOneGameK(n,k,r,m,WAR,rep,K)$ $M$ times, keeping track of which games do not terminate in $K$ moves and the lengths and winners of each terminating game. The procedure outputs a list $[W,T,nw,I]$ where $W$ is a list whose $i$-th entry is the generating function for the duration of terminating games that player $i$ won, $T$ is a list whose $i$-th entry is the generating function for the duration of terminating games where player $i$ tied with someone else, $nw$ is the generating function for the duration of terminating games with no winners, and $I$ is the number of games that did not end in K moves.
+
+
+\begin{lstlisting}
+GenManyGamesK:=proc(n,k,r,m,WAR,rep,K,w,t,M) local f,h,g,i,G,j,nw:
+  for i from 1 to r do
+    f[i]:=0:  g[i]:=0: od:
+  h:=0: nw:=0:
+
+
+  for i from 1 to M do
+    G:=GenOneGameK(n,k,r,m, WAR,rep,K):
+
+
+  if G=FAIL then h:=h+1
+   elif type(G[1],integer)=true then f[G[1]]:=f[G[1]]+w^G[2]
+  else
+   if nops(G[1])>1 then
+     for j in G[1] do
+        g[j]:=g[j]+t^G[2]: od:
+    else nw:=nw+t^G[2]  fi:
+  fi: od:
+
+
+ [[seq(f[i],i=1..r)],[seq(g[i],i=1..r)],nw,h]:
+end:
+\end{lstlisting}
+
+
+The procedure \textbf{GenManyGamesKEDIT(n,k,r,m,WAR,rep,K,w,t,M)} is an edited version of $GenManyGamesK(n,k,r,m,WAR,rep,K,w,t,M)$. It runs similarly to $GenManyGamesK(n,k,r,m,WAR,rep,K,w,t,M)$, but instead outputs a list $[all, win,nw,I]$ where $all$ is the generating function for the duration of all the games that terminated, $win$ is the generating function for the duration of terminating games with one winner,  $nw$ is the generating function for the duration of terminating games with no unique winner, and $I$ is the number of games that did not end in $K$ moves.
+
+
+\begin{lstlisting}
+GenManyGamesKEDIT:=proc(n,k,r,m,WAR,rep,K,t,M) local a, f,h,g,i,G,j,nw:
+  a:=0: f:=0: g:=0: h:=0: nw:=0:
+
+
+  for i from 1 to M do
+    G:=GenOneGame(n,k,r,m, WAR,rep,K):
+
+
+  if G=FAIL then h:=h+1:
+   elif type(G[1],integer)=true then
+     a:=a+t^G[2]:
+     f:=f+t^G[2]:
+  else
+      a:=a+t^G[2]:
+      nw:=nw+t^G[2]: 
+  fi: od:
+
+
+ [a,f,nw,h]:
+end:
+\end{lstlisting}
+
+
+The procedure \textbf{FinishGame(H,r,m, WAR,rep)} inputs a list $H$, positive integer $r$ such that $H$ has length $r$, a non-negative integer $m$, a war procedure $WAR$, and a replacement procedure $rep$. It simulates the rest of the game of war where the $i$-th entry of $H$ represents the $i$-th player's deck, $m$ is the default number of cards placed face down during a war, $WAR$ indicates which war procedure is being used, and $rep$ indicates which replacement procedure is being used. The procedure terminates when the number of players with cards left is less than or equal to 1 or a periodic orbit has been found. It outputs a list of length 2, where the first entry says the winner(s) of the game and the second entry is how many rounds the game took if it terminated or the cycle found if it does not terminate.
+
+
+\textbf{FinishGame(H,r,m, WAR,rep)} runs $OneMove$ until the game terminates or a periodic orbit is found, keeping track of how many rounds have occurred and each player's deck at the start of each round.  It checks for periodic orbits every 10 rounds. A periodic orbit is found after $b>0$ moves if $\exists a$ where $0\leq a < b$ such that each player's deck after $b$ moves is the same as their deck after $a$ moves. If this is true, then the procedure finds the length of the cycle, $L$ by counting the number of unique lists $P$ of each player's deck occurring between moves $a$ and $b$. It then finds the cycle by creating a list of length $L$ where the $i$-th entry is the list of each players deck after $a+i-1$ moves.
+
+
+\begin{lstlisting}
+FinishGame:=proc(H,r,m, WAR,rep) local Q, P, HandSize, moves, cyc, path, N, cycle, lost, output, w:
+  P:=H:
+  HandSize:=[seq(nops(P[i]),i=1..r)]: 
+  moves:=0:
+  cyc:=0:
+  path:=[P]: 
+
+
+  while nops(remove(t->t=0, HandSize))>1 and type(P,list)=true do
+    P:=OneMove(P,[],m,WAR,rep):
+    HandSize:=[seq(nops(P[i]),i=1..r)]:
+    moves:=moves+1: 
+
+
+    if moves mod 10=0 then N:=Search(P,path): 
+      if N>0 then
+        cyc:=nops({op(N..moves,path)}):
+        cycle:=[op(N..N+cyc-1,path)]:
+        HandSize:=[seq(nops(P[i]),i=1..r)]:
+        lost:={SearchAll(0,HandSize)}:
+        w:={seq(i,i=1..r)} minus lost:
+       break:  fi: fi: 
+    path:=[op(path),P]:  od:
+
+
+    if cyc>0 then
+      output:=[w,cycle]:
+    elif nops(remove(t->t=0, HandSize))=1 then
+      output:=[max[index](HandSize),moves]:
+    elif type(P,list)=false then
+      output:=[P,moves]:
+    else RETURN(FAIL): fi: 
+
+
+  output:
+end:
+\end{lstlisting}
+
+
+\subsubsection{Finding information on Simple Games of war} \hfill
+
+
+Here, we define a simple game of war to be a game of war with two players and $2*n$ unique cards. A simple game has the replacement procedure $RepAsc$, $RepDesc$, $RepAllAsc$, or $RepAllDesc$. In other words, player 2 will place the cards $[card1, card2]$ at the bottom of his deck in the same order as player 1 would. In the simple game, we can reduce the number of starting decks we need to look at in order to obtain information on all possible games of war. 
+
+
+The procedure \textbf{SimpGameInfo(n,rep)} inputs a positive integer $n$ and a replacement procedure $rep$. It outputs a list [[f,C],cycles], where $f$ is the generating function for the duration of terminating games, $C$ is the number of games that lead to cycles, and $cycles$ is the list of unique cycles.
+
+
+First,  \textbf{SimpGameInfo(n,rep)} reduces the number of starting decks it needs to run. There is no need to distinguish between Player 1 and Player 2 to figure out how all possible games will play out. Because the order that cards are replaced is the same for Player 1 and Player 2, running the simulation where player 1 starts of with the deck H[1] and player 2 starts with the deck H[2] will tell us everything we need to know about the game where player 1 starts with H[2] and player 2 starts with H[1]. Because the player with the (unique) highest card will never lose that card, there will never be a point in the game where player 1 and player 2 swap decks.  So, running simulations where we look at the partitions of 2*n into two parts of size n where player 1 always starts with the highest card, we obtain information on every possible game. (Here, we find half of the unique cycles, but can easily find the other half by switching player 1 and player 2's decks.) Furthermore, we do not need to run simulations for the games where player 1's lowest card is higher than player 2's highest card, as these games obviously end in $n$ moves.
+
+
+Different hands can enter the same cycle at different points in the cycle, so we need to make sure that we do not count the same cycle multiple times. To do this, first note that if two cycles share any element, then the cycles are the same. Given the way that maple orders the elements in a set, by turning our cycle into a set and then back into a list, we can ensure that the first element is the same regardless of where the cycle starts. Note that this element will always have player 1's first card as 1 because at some point in any cycle player 1 must have 1 as their first card. \textbf{SimpGameInfo(n,rep)} creates a list of these elements and, instead of checking through the whole list to see if a cycle has already been found, it creates sub-lists defined by the second card in player 1's deck. So, if player 1's second card is $b$, the procedure only checks through the elements where player 1's second card is $b$.
+
+
+\begin{lstlisting}
+SimpGameInfo:=proc(n,rep) local Decks, i,o,i1,j1,j2, counter, LedToCyc, cycles, C,N, f, H,G,a,b,k,M,N1,DrZ:
+ if rep<>RepAsc and rep<>RepDesc and rep<>RepAllAsc and rep<>RepAllDesc then
+    print(`This is not a simple war game. Can't use this procedure.`):
+  else
+    Decks:=setpartition([seq(i,i=1..2*n)],n):  
+   #Right now, Player 1 always starts with 1. It is simpler if he starts with 2*n since he can never lose this card, so we need to turn all of the current 2*n's into 1's and all of the current 1's into 2*n's. 
+    Decks:=subs(2*n=DrZ,Decks):  
+    Decks:=subs(1=2*n,Decks):
+    Decks:=subs(DrZ=1,Decks):
+ #It is obvious that if one player's highest card is lower than the other player's lowest card, then they lose the game in n rounds.
+    Decks:=remove(t->t=[[2*n, seq(i,i=2*n-n+1..2*n-1)],[seq(i,i=2..2*n-n),1]],Decks):
+    
+
+
+    N1:=n!: 
+    N:=nops(Decks): 
+    counter:=0:
+    LedToCyc:=0:
+    cycles:=[]:
+    C:=[seq([],i=1..2*n)]: 
+    f:=0:
+    o:=permute(n):
+   
+    #Right now each players deck is in a specific order, so we need to look at the various ways to shuffle them.
+   for i1 from 1 to N do
+    for j1 from 1 to N1 do
+      for j2 from 1 to N1 do
+        H:=[Decks[i1][1][o[j1]],Decks[i1][2][o[j2]]]: 
+      if counter mod 50000 = 0 and counter>0 then                
+        print(`Played`, counter, `games`);
+        print(nops(cycles), `distinct cycles`);
+        print(LedToCyc, `got a cycle`);
+          print(f):
+       fi:
+
+
+      counter:=counter+1:
+
+
+      G:=FinishGame(H,2,1, WARm,rep):
+      #Note: m and WAR don't matter since every card is unique.
+
+
+      if type(G[2],list)=true then 
+         #We have a cycle!
+         LedToCyc:=LedToCyc+1:
+         a:=G[2]:  
+         b:=[op({op(a)})][1]: 
+         k:=b[1][2]:  
+         M:=Search(b,C[k]):
+
+
+        if M=0 then 
+          C:=[seq(C[i],i=1..k-1), [op(C[k]),b], seq(C[i],i=k+1..2*n)]: 
+          cycles:=[op(cycles),a]:
+         fi: 
+
+
+      elif type(G[2],integer)=true then
+         f:=f+t^G[2]:
+        fi:
+      od: od: od:
+    print(2*nops(cycles), `distinct cycles`):
+    print(2*LedToCyc, `got a cycle`):
+    print((2*n)!, `total games`):
+  fi:
+
+
+      [[2*f+2*n!^2*t^n,2*LedToCyc],[op(cycles),seq(cycles[i][2],cycles[i][1],i=1..-1)]]:
+  end:
+\end{lstlisting}
+
+
+The following separate \textbf{SimpGameInfo(n,rep)} into two procedures \textbf{SimpGameLengths} and \textbf{SimpPerDecks} in order to speed up running the procedures if information on only game lengths or only cycles is needed.
+
+
+
+
+\begin{lstlisting}
+SimpPerDecks:=proc(n,rep) local Decks, i, counter, LedToCyc, cycles,o,i1,j1,j2, C,N, H,G,a,b,k,M,N1, DrZ:
+ if rep<>RepAsc and rep<>RepDesc and rep<>RepAllAsc and rep<>RepAllDesc then
+    print(`This is not a simple war game. Can't use this procedure.`):
+  else
+    Decks:=setpartition([seq(i,i=1..2*n)],n):  
+
+
+    #Right now, Player 1 always starts with 1. For later in the code, it is easier if he starts with 2*n since he can never lose this card.
+    #We need to turn all of the current 2*n's into 1's and all of the current 1's into 2*n's. Note, that right now the current 1's are always 
+    #the first element of P1's deck
+    Decks:=subs(2*n=DrZ,Decks):  
+    Decks:=subs(1=2*n,Decks):
+    Decks:=subs(DrZ=1,Decks): 
+    
+    #It is obvious that if one player's highest card is lower than the other player's lowest card, then they lose the game in n rounds.
+    Decks:=remove(t->t=[[2*n, seq(i,i=2*n-n+1..2*n-1)],[seq(i,i=2..2*n-n),1]],Decks):
+
+
+    N1:=n!: 
+    N:=nops(Decks): 
+    counter:=0:
+    LedToCyc:=0:
+    cycles:=[]:
+    C:=[seq([],i=1..2*n)]: 
+    o:=permute(n):
+   
+    #Right now each players deck is in a specific order, so we need to look at the various ways to shuffle them.
+   for i1 from 1 to N do
+    for j1 from 1 to N1 do
+      for j2 from 1 to N1 do
+        H:=[Decks[i1][1][o[j1]],Decks[i1][2][o[j2]]]: 
+        
+      if counter mod 50000 = 0 and counter>0 then                
+        print(`Played`, counter, `games`);
+        print(nops(cycles), `distinct cycles`);
+        print(LedToCyc, `got a cycle`);
+       fi:
+
+
+      counter:=counter+1:
+
+
+      G:=FinishGame(H,2,1, WARm,rep):
+      #Note: m and WAR don't matter since every card is unique.
+
+
+      if type(G[2],list)=true then 
+         #We have a cycle!
+         LedToCyc:=LedToCyc+1:
+         a:=G[2]:  
+         b:=[op({op(a)})][1]: 
+         k:=b[1][2]:  
+         M:=Search(b,C[k]):
+
+
+        if M=0 then 
+          C:=[seq(C[i],i=1..k-1), [op(C[k]),b], seq(C[i],i=k+1..2*n)]: 
+          cycles:=[op(cycles),a]:
+         fi: fi:
+      od: od: od:
+    print(2*nops(cycles), `distinct cycles`):
+    print(2*LedToCyc, `got a cycle`):
+    print((2*n)!, `total games`):
+  fi:
+
+
+       [op(cycles), seq(cycles[i][2],cycles[i][1],i=1..-1)]:
+  end:
+\end{lstlisting}
+
+
+\begin{lstlisting}
+SimpGameLengths:=proc(n,rep) local Decks, i,o,i1,j1,j2, counter, LedToCyc,N, f, H,G,N1,DrZ:
+ if rep<>RepAsc and rep<>RepDesc and rep<>RepAllAsc and rep<>RepAllDesc then
+    print(`This is not a simple war game. Can't use this procedure.`):
+  else
+    Decks:=setpartition([seq(i,i=1..2*n)],n):  
+
+
+
+
+    #Right now, Player 1 always starts with 1. It is easier if he starts with 2*n since he can never lose this card.
+    #We need to turn all of the current 2*n's into 1's and all of the current 1's into 2*n's. Note, that right now the current 1's are always 
+    #the first element of P1's deck
+    Decks:=subs(2*n=DrZ,Decks):  
+    Decks:=subs(1=2*n,Decks):
+    Decks:=subs(DrZ=1,Decks):
+    
+    #It is obvious that if one player's highest card is lower than the other player's lowest card, then they lose the game in n rounds.
+    Decks:=remove(t->t=[[2*n, seq(i,i=2*n-n+1..2*n-1)],[seq(i,i=2..2*n-n),1]],Decks):
+
+
+    N1:=n!: 
+    N:=nops(Decks): 
+    counter:=0:
+    LedToCyc:=0:
+    f:=0:
+    o:=permute(n):
+   
+    #Right now each players deck is in a specific order, so we need to look at the various ways to shuffle them.
+   for i1 from 1 to N do
+    for j1 from 1 to N1 do
+      for j2 from 1 to N1 do
+        H:=[Decks[i1][1][o[j1]],Decks[i1][2][o[j2]]]: 
+      if counter mod 50000 = 0 and counter>0 then                
+        print(`Played`, counter, `games`);
+        print(nops(cycles), `distinct cycles`);
+        print(LedToCyc, `got a cycle`);
+          print(f):
+       fi:
+
+
+      counter:=counter+1:
+
+
+      G:=FinishGame(H,2,1, WARm,rep):
+      #Note: m and WAR don't matter since every card is unique.
+
+
+      if type(G[2],list)=true then 
+         #We have a cycle!
+         LedToCyc:=LedToCyc+1:
+
+
+      elif type(G[2],integer)=true then
+         f:=f+t^G[2]:
+        fi:
+      od: od: od:
+    print(2*LedToCyc, `got a cycle`):
+    print((2*n)!, `total games`):
+  fi:
+
+
+      [2*f+2*n!^2*t^n,2*LedToCyc]:
+  end:
+\end{lstlisting}
+
+
+
+
+
+
+
+
+
+
 \subsection{The War Graph: Procedures}
 The procedures \textbf{WarGraph(n)} and \textbf{ArbRelWG(M)} (short for "arbitrary-relation war graph")
 use the GraphTheory package in Maple to construct the \emph{game graph} of war.
@@ -485,11 +860,6 @@ end:
 
 \section{The War Graph}
 \label{sec:graph}
-
-\clearpage
-
-\printbibliography
-
 
 
 \end{document}
